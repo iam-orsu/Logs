@@ -1,63 +1,60 @@
 #!/bin/bash
 
+# Exit on any error
 set -e
 
-# Variables
-DB_PASSWORD="vamsi@123"
-DVWA_DIR="/var/www/html/dvwa"
-LOGSTASH_CONFIG="/etc/logstash/conf.d/apache_dvwa.conf"
+# Install Docker if not installed
+if ! command -v docker &> /dev/null
+then
+    echo "Docker not found, installing Docker..."
+    sudo apt-get update
+    sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+    sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+    sudo apt-get update
+    sudo apt-get install -y docker-ce
+    sudo systemctl enable --now docker
+else
+    echo "Docker already installed."
+fi
 
-echo "Updating and installing prerequisites..."
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y apache2 mysql-server php php-mysql php-gd libapache2-mod-php git wget apt-transport-https curl
+# Run Juice Shop in Docker
+echo "Running OWASP Juice Shop in Docker..."
+sudo docker pull bkimminich/juice-shop
+sudo docker run --rm -d -p 3000:3000 --name juice-shop bkimminich/juice-shop
 
-# Install DVWA
-echo "Installing DVWA..."
-sudo git clone https://github.com/digininja/DVWA.git $DVWA_DIR
-sudo chmod -R 755 $DVWA_DIR
-sudo chown -R www-data:www-data $DVWA_DIR
+# Install Java (required for Elasticsearch)
+echo "Installing Java for Elasticsearch..."
+sudo apt-get install -y openjdk-11-jdk
 
-echo "Configuring DVWA..."
-sudo cp $DVWA_DIR/config/config.inc.php.dist $DVWA_DIR/config/config.inc.php
-sudo sed -i "s/^\(\$_DVWA\['db_password'\] =\).*/\1 '$DB_PASSWORD';/" $DVWA_DIR/config/config.inc.php
-
-echo "Setting up MySQL for DVWA..."
-sudo systemctl start mysql
-sudo mysql -u root <<MYSQL_SCRIPT
-CREATE DATABASE dvwa;
-CREATE USER 'root'@'localhost' IDENTIFIED BY '$DB_PASSWORD';
-GRANT ALL PRIVILEGES ON dvwa.* TO 'root'@'localhost';
-FLUSH PRIVILEGES;
-MYSQL_SCRIPT
-
-echo "Restarting Apache..."
-sudo systemctl enable apache2
-sudo systemctl restart apache2
-
-# Install Elasticsearch
+# Install and configure Elasticsearch
 echo "Installing Elasticsearch..."
-wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
-echo "deb https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
-sudo apt update
-sudo apt install -y elasticsearch
-sudo systemctl enable elasticsearch
-sudo systemctl start elasticsearch
+wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-8.6.2-linux-x86_64.tar.gz
+tar -xzvf elasticsearch-8.6.2-linux-x86_64.tar.gz
+cd elasticsearch-8.6.2
+sudo ./bin/elasticsearch &
+sleep 15 # Give Elasticsearch time to start
 
-# Install Logstash
-echo "Installing Logstash..."
-sudo apt install -y logstash
-sudo systemctl enable logstash
-
-# Install Kibana
+# Install and configure Kibana
 echo "Installing Kibana..."
-sudo apt install -y kibana
-sudo systemctl enable kibana
-sudo systemctl start kibana
+cd ..
+wget https://artifacts.elastic.co/downloads/kibana/kibana-8.6.2-linux-x86_64.tar.gz
+tar -xzvf kibana-8.6.2-linux-x86_64.tar.gz
+cd kibana-8.6.2
+sudo ./bin/kibana &
+sleep 15 # Give Kibana time to start
 
-# Configure Logstash
-echo "Configuring Logstash..."
-sudo mkdir -p $(dirname $LOGSTASH_CONFIG)
-sudo tee $LOGSTASH_CONFIG > /dev/null <<EOL
+# Install and configure Logstash
+echo "Installing Logstash..."
+cd ..
+wget https://artifacts.elastic.co/downloads/logstash/logstash-8.6.2-linux-x86_64.tar.gz
+tar -xzvf logstash-8.6.2-linux-x86_64.tar.gz
+cd logstash-8.6.2
+
+# Create a Logstash config file to monitor Juice Shop logs
+echo "Creating Logstash config file..."
+sudo mkdir -p /etc/logstash/conf.d
+cat <<EOL | sudo tee /etc/logstash/conf.d/juice_shop_logs.conf > /dev/null
 input {
     file {
         path => "/var/log/apache2/access.log"
@@ -79,20 +76,24 @@ filter {
 output {
     elasticsearch {
         hosts => ["http://localhost:9200"]
-        index => "dvwa-logs"
+        index => "juice-shop-logs"
     }
     stdout { codec => rubydebug }
 }
 EOL
 
+# Start Logstash with the new configuration
 echo "Starting Logstash..."
-sudo systemctl restart logstash
+sudo ./bin/logstash -f /etc/logstash/conf.d/juice_shop_logs.conf &
+sleep 15 # Give Logstash time to start
 
-# Kibana Configuration
-echo "Configuring Kibana..."
-echo "Kibana is available at: http://<your-ip>:5601"
+# Configure Kibana index pattern
+echo "Kibana setup complete. Now you can configure your index pattern in Kibana..."
+echo "Go to Kibana at http://localhost:5601"
+echo "In Kibana, create an index pattern for 'juice-shop-logs*'"
 
-# Final Steps
-echo "DVWA is available at: http://<your-ip>/dvwa"
-echo "Default credentials: admin / password"
-echo "Please login and click 'Create / Reset Database' to complete DVWA setup."
+# Final Message
+echo "OWASP Juice Shop is now running at http://localhost:3000"
+echo "You can view logs and create visualizations in Kibana at http://localhost:5601"
+echo "For Kibana, use the index pattern 'juice-shop-logs*' to view Juice Shop logs."
+
