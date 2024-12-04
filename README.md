@@ -1,38 +1,34 @@
-What the Script Does
+How to Use the Script:
+Save the Script: Save the script to a file named setup_juice_shop_elk.sh:
 
-Installs DVWA:
-Downloads and configures DVWA under /var/www/html/dvwa.
+bash
+Copy code
+nano setup_juice_shop_elk.sh
+Make the Script Executable:
 
-Sets the MySQL root password to vamsi@123.
+bash
+Copy code
+chmod +x setup_juice_shop_elk.sh
+Run the Script:
 
-Sets Up ELK Stack:
+bash
+Copy code
+sudo ./setup_juice_shop_elk.sh
+What the Script Does:
+Installs Docker (if not already installed) and runs OWASP Juice Shop in a Docker container.
+Installs Elasticsearch, Kibana, and Logstash manually.
+Configures Logstash to read Apache logs (you may need to adjust the log file path if Juice Shop isn't logging to Apache's default log location) and send them to Elasticsearch.
+Runs Kibana to visualize the logs.
+Once the script is executed, you can access Juice Shop at http://localhost:3000 and Kibana at http://localhost:5601.
+After Running the Script:
+Access OWASP Juice Shop:
 
-Installs Elasticsearch, Logstash, and Kibana.
-
-Configures Logstash to monitor Apache logs (/var/log/apache2/access.log).
-
-Configures Kibana:
-
-Kibana will be accessible at http://<your-ip>:5601.
-
-Post-Setup
-Access DVWA:
-
-Navigate to http://<kali-ip>/dvwa.
-
-Log in with admin / password.
-
-Click "Create / Reset Database" in the setup tab.
-
+Open your browser and go to http://localhost:3000. This will be the Juice Shop application.
 Access Kibana:
 
+Open your browser and go to http://localhost:5601.
+In Kibana, go to Stack Management > Index Patterns, and create an index pattern juice-shop-logs* to visualize the logs.
+Explore logs under Discover and create visualizations in Kibana.
+View Logs in Kibana:
 
-Navigate to http://<kali-ip>:5601.
-
-Create an index pattern (dvwa-logs*) to visualize the logs.
-
-Generate Logs:
-
-Interact with DVWA to create logs (e.g., SQL Injection, XSS).
-
-Logs will be available in Kibana's Discover section.
+Once you interact with the Juice Shop, you will see logs being collected in Elasticsearch and visualized in Kibana.
